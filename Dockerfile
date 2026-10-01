@@ -19,7 +19,6 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/server.ts ./
 COPY --from=build /app/tsconfig.json ./
-COPY --from=build /app/railway.db /app/data/railway.db
 
 RUN mkdir -p /app/data
 
