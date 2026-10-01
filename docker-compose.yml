@@ -18,7 +18,10 @@ services:
       - "8080:8080"
     volumes:
       - railway-data:/data
-    command: /data/railway.db
+    environment:
+      - SQLITE_DATABASE=railway.db
+    depends_on:
+      - app
     restart: always
 
 volumes:

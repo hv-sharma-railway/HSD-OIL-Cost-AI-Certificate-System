@@ -2,6 +2,7 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import Database from "better-sqlite3";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 import { GoogleGenAI, Type } from "@google/genai";
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
@@ -10,6 +11,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const dbPath = process.env.DATABASE_PATH || "railway.db";
+const dbDir = path.dirname(dbPath);
+if (dbDir && dbDir !== "." && !fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
+}
 const db = new Database(dbPath);
 
 const ai = new GoogleGenAI({
