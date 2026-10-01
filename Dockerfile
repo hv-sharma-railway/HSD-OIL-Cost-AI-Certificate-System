@@ -15,8 +15,7 @@ FROM node:20-slim
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install --omit=dev
-
+COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/server.ts ./
 COPY --from=build /app/tsconfig.json ./

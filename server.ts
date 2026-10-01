@@ -243,6 +243,40 @@ db.exec(`
 try { db.prepare("ALTER TABLE sessions ADD COLUMN is_completed INTEGER DEFAULT 0").run(); } catch (e) {}
 try { db.prepare("ALTER TABLE consumption_records ADD COLUMN session_id TEXT").run(); } catch (e) {}
 
+// Seed default sheds and prices if database is newly initialized
+try {
+  const shedCount = (db.prepare("SELECT count(*) as count FROM sheds").get() as any)?.count || 0;
+  if (shedCount === 0) {
+    const insertShed = db.prepare("INSERT INTO sheds (id, shed_name, railway) VALUES (?, ?, ?)");
+    insertShed.run('1', 'PUNE', 'CR');
+    insertShed.run('2', 'RAJKOT', 'WR');
+    insertShed.run('3', 'AHMEDABAD', 'WR');
+  }
+
+  const priceCount = (db.prepare("SELECT count(*) as count FROM prices").get() as any)?.count || 0;
+  if (priceCount === 0) {
+    const insertPrice = db.prepare("INSERT INTO prices (id, supplying_shed, month, year, data) VALUES (?, ?, ?, ?, ?)");
+    insertPrice.run('p1', 'HXP', 'FEB', '2026', JSON.stringify({
+      periodNames: { p1: '1st-15th', p2: '16th-End' },
+      periods: {
+        p1: { base_price: 57309, excise: 17800, vat: 15066, overhead: 2169 },
+        p2: { base_price: 57309, excise: 17800, vat: 15066, overhead: 2169 },
+        average: { base_price: 57309, excise: 17800, vat: 15066, overhead: 2169 }
+      }
+    }));
+    insertPrice.run('p2', 'WKR', 'FEB', '2026', JSON.stringify({
+      periodNames: { p1: '1st-15th', p2: '16th-End' },
+      periods: {
+        p1: { base_price: 56755, excise: 17800, vat: 14863, overhead: 1680 },
+        p2: { base_price: 56755, excise: 17800, vat: 14863, overhead: 1680 },
+        average: { base_price: 56755, excise: 17800, vat: 14863, overhead: 1680 }
+      }
+    }));
+  }
+} catch (e) {
+  console.warn("Seeding initial data note:", e);
+}
+
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));

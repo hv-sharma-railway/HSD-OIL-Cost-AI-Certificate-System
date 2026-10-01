@@ -20,6 +20,8 @@ services:
       - railway-data:/data
     environment:
       - SQLITE_DATABASE=railway.db
+    entrypoint: ["sh", "-c"]
+    command: ["touch /data/railway.db 2>/dev/null || true; exec sqlite_web -H 0.0.0.0 -p 8080 -x /data/railway.db"]
     depends_on:
       - app
     restart: always
