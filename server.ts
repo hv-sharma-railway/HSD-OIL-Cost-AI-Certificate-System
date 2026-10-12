@@ -17,14 +17,16 @@ if (dbDir && dbDir !== "." && !fs.existsSync(dbDir)) {
 }
 const db = new Database(dbPath);
 
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    }
-  }
-});
+const ai = process.env.GEMINI_API_KEY
+  ? new GoogleGenAI({
+      apiKey: process.env.GEMINI_API_KEY,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        }
+      }
+    })
+  : null;
 
 // Helper to extract digital text stream with 2D spatial layout reconstruction and deterministic row matching
 interface ExtractedRowMatch {
@@ -55,8 +57,9 @@ interface PdfExtractionResult {
 }
 
 async function extractPdfText(buffer: Buffer): Promise<PdfExtractionResult> {
+  let loadingTask: any;
   try {
-    const loadingTask = pdfjsLib.getDocument({
+    loadingTask = pdfjsLib.getDocument({
       data: new Uint8Array(buffer),
       useSystemFonts: true,
       disableFontFace: true
@@ -68,6 +71,7 @@ async function extractPdfText(buffer: Buffer): Promise<PdfExtractionResult> {
       const page = await pdf.getPage(pageNum);
       const textContent = await page.getTextContent();
       const items = (textContent.items as any[]).filter(item => item.str && item.str.trim().length > 0);
+      page.cleanup();
 
       // Group text items by Y coordinate (vertical position)
       const lineClusters: { y: number; items: any[] }[] = [];
@@ -189,6 +193,10 @@ async function extractPdfText(buffer: Buffer): Promise<PdfExtractionResult> {
       tableLines: [],
       deterministicMatches: []
     };
+  } finally {
+    if (loadingTask) {
+      await loadingTask.destroy().catch(() => {});
+    }
   }
 }
 
@@ -280,6 +288,10 @@ try {
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+app.get("/healthz", (_req, res) => {
+  res.status(200).json({ status: "ok" });
+});
 
 // Work Logs & Analytics State
 app.get("/api/sessions", (req, res) => {
@@ -531,22 +543,26 @@ MANDATORY RULES:
     const modelCandidates = ["gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash"];
     let lastError: any = null;
 
-    for (const modelName of modelCandidates) {
-      try {
-        console.log(`[OCR] Attempting extraction with model: ${modelName}`);
-        response = await ai.models.generateContent({
-          model: modelName,
-          contents,
-          config
-        });
-        if (response && response.text) {
-          console.log(`[OCR] Success with model: ${modelName}`);
-          break;
+    if (ai) {
+      for (const modelName of modelCandidates) {
+        try {
+          console.log(`[OCR] Attempting extraction with model: ${modelName}`);
+          response = await ai.models.generateContent({
+            model: modelName,
+            contents,
+            config
+          });
+          if (response && response.text) {
+            console.log(`[OCR] Success with model: ${modelName}`);
+            break;
+          }
+        } catch (err: any) {
+          console.warn(`[OCR] Model ${modelName} failed (${err?.message || err}), trying next...`);
+          lastError = err;
         }
-      } catch (err: any) {
-        console.warn(`[OCR] Model ${modelName} failed (${err?.message || err}), trying next...`);
-        lastError = err;
       }
+    } else {
+      lastError = new Error("GEMINI_API_KEY is not configured");
     }
 
     if (!response || !response.text) {
@@ -744,14 +760,18 @@ app.post("/api/vouchers/scan-combined", async (req, res) => {
     if (!pdf_base64) {
       return res.status(400).json({ error: "Missing pdf_base64 in request body" });
     }
+    if (!ai) {
+      return res.status(503).json({ error: "Voucher scanning requires GEMINI_API_KEY to be configured" });
+    }
 
     const cleanBase64 = pdf_base64.includes(",") ? pdf_base64.split(",")[1] : pdf_base64;
     const pdfBuffer = Buffer.from(cleanBase64, "base64");
 
     // Extract digital text stream per page with pdfjs for cross-verification
     let digitalPageTexts: { page: number; text: string }[] = [];
+    let loadingTask: any;
     try {
-      const loadingTask = pdfjsLib.getDocument({
+      loadingTask = pdfjsLib.getDocument({
         data: new Uint8Array(pdfBuffer),
         useSystemFonts: true,
         disableFontFace: true
@@ -762,9 +782,14 @@ app.post("/api/vouchers/scan-combined", async (req, res) => {
         const textContent = await page.getTextContent();
         const pageText = textContent.items.map((it: any) => it.str).join(" ");
         digitalPageTexts.push({ page: p, text: pageText });
+        page.cleanup();
       }
     } catch (e: any) {
       console.warn("[Voucher OCR] Digital text extraction note:", e?.message);
+    } finally {
+      if (loadingTask) {
+        await loadingTask.destroy().catch(() => {});
+      }
     }
 
     const systemPrompt = `You are a high-precision OCR and fuel accounting extraction engine for Indian Railways Consumer Depot (RCD) combined vouchers, specifically RCD HAPA (HXP) and RCD WAKANER (WKR).

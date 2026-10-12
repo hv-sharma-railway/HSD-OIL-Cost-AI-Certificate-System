@@ -6,8 +6,9 @@ services:
     volumes:
       - railway-data:/app/data
     environment:
-      - NODE_ENV=production
-      - DATABASE_PATH=/app/data/railway.db
+      NODE_ENV: production
+      DATABASE_PATH: /app/data/railway.db
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     restart: always
 
   db-browser:
